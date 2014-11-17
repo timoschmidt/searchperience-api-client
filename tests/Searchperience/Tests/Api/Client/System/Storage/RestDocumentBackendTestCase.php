@@ -2,6 +2,9 @@
 
 namespace Searchperience\Tests\Api\Client\Document\System\Storage;
 
+use Searchperience\Api\Client\Domain\Filters\FilterCollection;
+use Searchperience\Api\Client\Domain\Document\Document;
+
 /**
  * @author Michael Klapper <michael.klapper@aoemedia.de>
  * @date 14.11.12
@@ -128,6 +131,107 @@ class RestDocumentBackendTestCase extends \Searchperience\Tests\BaseTestCase {
 	/**
 	 * @test
 	 */
+	public function canGetDocumentByDyUrlAnReconstitudeNoIndex() {
+		$restClient = new \Guzzle\Http\Client('http://api.searchperience.com/');
+		$mock = new \Guzzle\Plugin\Mock\MockPlugin();
+		$mock->addResponse(new \Guzzle\Http\Message\Response(201, NULL, $this->getFixtureContent('Api/Client/System/Storage/Fixture/Qvc_foreignId_12_noIndexTrue.xml')));
+		$restClient->addSubscriber($mock);
+
+		$this->documentBackend->injectRestClient($restClient);
+		$document = $this->documentBackend->getByUrl('http://www.dummy.tld/some/product');
+
+		$expectedDocument = $this->getDocument(array(
+			'id' => 12,
+			'foreignId' => '13211',
+			'source' => 'magento',
+			'content' => '<xml>some value</xml>',
+			'url' => 'http://www.dummy.tld/some/product',
+			'generalPriority' => 0,
+			'temporaryPriority' => 2,
+			'lastProcessing' => '2012-11-14 17:35:03',
+			'boostFactor' => 1,
+			'noIndex' => 1,
+			'isProminent' => 1,
+			'isMarkedForProcessing' => 0,
+			'mimeType' => 'text/xml'
+		));
+
+		$this->assertInstanceOf('\Searchperience\Api\Client\Domain\Document\Document', $document);
+		$this->assertEquals($expectedDocument, $document);
+	}
+
+	/**
+	 * @test
+	 */
+	public function canGetDocumentByDyUrlAnReconstitudePageRank() {
+		$restClient = new \Guzzle\Http\Client('http://api.searchperience.com/');
+		$mock = new \Guzzle\Plugin\Mock\MockPlugin();
+		$mock->addResponse(new \Guzzle\Http\Message\Response(201, NULL, $this->getFixtureContent('Api/Client/System/Storage/Fixture/Qvc_foreignId_12_withPageRank.xml')));
+		$restClient->addSubscriber($mock);
+
+		$this->documentBackend->injectRestClient($restClient);
+		$document = $this->documentBackend->getByUrl('http://www.dummy.tld/some/product');
+
+		$expectedDocument = $this->getDocument(array(
+			'id' => 12,
+			'foreignId' => '13211',
+			'source' => 'magento',
+			'content' => '<xml>some value</xml>',
+			'url' => 'http://www.dummy.tld/some/product',
+			'generalPriority' => 0,
+			'temporaryPriority' => 2,
+			'lastProcessing' => '2012-11-14 17:35:03',
+			'boostFactor' => 1,
+			'noIndex' => 1,
+			'isProminent' => 1,
+			'isMarkedForProcessing' => 0,
+			'mimeType' => 'text/xml',
+			'pageRank' => 5.55,
+			'solrCoreHints' => ''
+		));
+
+		$this->assertInstanceOf('\Searchperience\Api\Client\Domain\Document\Document', $document);
+		$this->assertEquals(5.55, $document->getPageRank(),'Page rank was not reconstituted as expected');
+		$this->assertEquals($expectedDocument, $document);
+	}
+
+	/**
+	 * @test
+	 */
+	public function canReconstitutePromotionFromXmlResponse() {
+		$restClient = new \Guzzle\Http\Client('http://api.searchperience.com/');
+		$mock = new \Guzzle\Plugin\Mock\MockPlugin();
+		$promotionXml = $this->getFixtureContent('Api/Client/System/Storage/Fixture/Promotion.xml');
+		$mock->addResponse(new \Guzzle\Http\Message\Response(201, NULL, $promotionXml));
+		$restClient->addSubscriber($mock);
+
+		$this->documentBackend->injectRestClient($restClient);
+			/** @var $promotion \Searchperience\Api\Client\Domain\Document\Promotion */
+		$promotion = $this->documentBackend->getByUrl('http://www.dummy.tld/some/product');
+
+		$dom = new \DOMDocument();
+		$dom->loadXML($promotionXml);
+
+		$xpath = new \DOMXPath($dom);
+		$node = $xpath->query('//document/content');
+		$inputPromotionXml = '<?xml version="1.0" encoding="UTF-8"?>'.(string) $node->item(0)->textContent;
+
+		$this->assertInstanceOf('\Searchperience\Api\Client\Domain\Document\Promotion',$promotion);
+		$this->assertEquals('backend',$promotion->getSource());
+		$this->assertEquals('http://www.foobar.de/test.gif',$promotion->getImageUrl());
+		$this->assertEquals('organic',$promotion->getPromotionType());
+		$this->assertEquals($this->cleanSpaces($inputPromotionXml),$this->cleanSpaces($promotion->getContent()),'Could not initialize and persist from promotion');
+
+		//can we create a DOMDocument from the promotion content
+		$dom = new \DOMDocument();
+		$dom->loadXML($promotion->getPromotionContent());
+		$xpath = new \DOMXPath($dom);
+		$this->assertEquals('test test',(string)$xpath->query('//body')->item(0)->textContent,'could not get expected body content from promotion html');
+	}
+
+	/**
+	 * @test
+	 */
 	public function canGetAllDocuments() {
 		$restClient = new \Guzzle\Http\Client('http://api.searchperience.com/');
 		$mock = new \Guzzle\Plugin\Mock\MockPlugin();
@@ -177,6 +281,31 @@ class RestDocumentBackendTestCase extends \Searchperience\Tests\BaseTestCase {
 	/**
 	 * @test
 	 */
+	public function canDeleteByUrl() {
+		$expectedUrl =  '/{customerKey}/documents?url='.urlencode('http://www.google.de/');
+		$responseMock = $this->getMock('\Guzzle\Http\Message\Response', array('getStatusCode'), array(), '', false);
+		$responseMock->expects($this->once())->method('getStatusCode')->will($this->returnValue(200));
+
+		$requestMock = $this->getMock('\Guzzle\Http\Message\Request',array('setAuth','send'),array(),'',false);
+		$requestMock->expects($this->once())->method('setAuth')->will($this->returnCallback(function () use ($requestMock) {
+			return $requestMock;
+		}));
+		$requestMock->expects($this->once())->method('send')->will($this->returnCallback(function () use ($responseMock) {
+			return $responseMock;
+		}));
+
+		$restClient = $this->getMock('\Guzzle\Http\Client',array('delete','setAuth','send'),array('http://api.searcperience.com/'));
+		$restClient->expects($this->once())->method('delete')->with($expectedUrl)->will($this->returnCallback(function() use ($requestMock) {
+			return $requestMock;
+		}));
+
+		$this->documentBackend->injectRestClient($restClient);
+		$this->assertEquals(200, $this->documentBackend->deleteByUrl('http://www.google.de/'));
+	}
+
+	/**
+	 * @test
+	 */
 	public function canDeleteDocumentBySource() {
 		$restClient = new \Guzzle\Http\Client('http://api.searchperience.com/');
 		$mock = new \Guzzle\Plugin\Mock\MockPlugin();
@@ -189,7 +318,7 @@ class RestDocumentBackendTestCase extends \Searchperience\Tests\BaseTestCase {
 
 	/**
 	 * @test
-	 * @expectedException \Searchperience\Common\Http\Exception\ClientErrorResponseException
+	 * @expectedException \Searchperience\Common\Http\Exception\ForbiddenException
 	 */
 	public function verifyPostDocumentThrowsClientErrorResponseExceptionWhileInvalidAuthenticationGiven() {
 		$restClient = new \Guzzle\Http\Client('http://api.searchperience.com/');
@@ -230,7 +359,9 @@ class RestDocumentBackendTestCase extends \Searchperience\Tests\BaseTestCase {
 							'processStart' => $this->getUTCDateTimeObject('2014-01-01 10:00:00'),
 							'processEnd' => $this->getUTCDateTimeObject('2014-01-03 10:00:00')
 						),
-						'notifications' => array('isduplicateof' => false, 'lasterror' => true, 'processingthreadid' => true),
+						'notifications' => array(
+							'notifications' => array(Document::IS_DUPLICATE,Document::IS_ERROR,Document::IS_PROCESSING)
+						),
 		);
 
 		$expectedUrl = '/{customerKey}/documents?start=0&limit=10&'.
@@ -242,10 +373,8 @@ class RestDocumentBackendTestCase extends \Searchperience\Tests\BaseTestCase {
 						'pageRankEnd=123&'.
 						'processStart=2014-01-01%2010%3A00%3A00&'.
 						'processEnd=2014-01-03%2010%3A00%3A00&'.
-						'lasterror=1&'.
-						'processingthreadid=1';
+						'isDuplicate=1&hasError=1&processingThreadIdStart=1&processingThreadIdEnd=65536&isDeleted=0';
 
-		//$this->markTestSkipped('The test is not valid anymore.');
 		$responsetMock = $this->getMock('\Guzzle\Http\Message\Response', array('xml'), array(), '', false);
 		$responsetMock->expects($this->once())->method('xml')->will($this->returnValue(new \SimpleXMLElement('<?xml version="1.0"?><documents></documents>')));
 
@@ -273,4 +402,90 @@ class RestDocumentBackendTestCase extends \Searchperience\Tests\BaseTestCase {
 		$filterCollection = $filterCollectionFactory->createFromFilterArguments($filters);
 		$this->documentBackend->getAllByFilterCollection(0, 10, $filterCollection);
 	}
+
+	/**
+	 * @test
+	 */
+	public function sortingIsPassedToRestBackend() {
+		$expectedUrl = '/{customerKey}/documents?start=0&limit=10&sortingField=foo&sortingType=DESC';
+		$responsetMock = $this->getMock('\Guzzle\Http\Message\Response', array('xml'), array(), '', false);
+		$responsetMock->expects($this->once())->method('xml')->will($this->returnValue(new \SimpleXMLElement('<?xml version="1.0"?><documents></documents>')));
+
+		$resquestMock = $this->getMock('\Guzzle\Http\Message\Request',array('setAuth','send'),array(),'',false);
+		$resquestMock->expects($this->once())->method('setAuth')->will($this->returnCallback(function () use ($resquestMock) {
+			return $resquestMock;
+		}));
+		$resquestMock->expects($this->once())->method('send')->will($this->returnCallback(function () use ($responsetMock) {
+			return $responsetMock;
+		}));
+
+		$restClient = $this->getMock('\Guzzle\Http\Client',array('get','setAuth','send'),array('http://api.searcperience.com/'));
+		$restClient->expects($this->once())->method('get')->with($expectedUrl)->will($this->returnCallback(function() use ($resquestMock) {
+			return $resquestMock;
+		}));
+
+
+		$mock = new \Guzzle\Plugin\Mock\MockPlugin();
+		$mock->addResponse(new \Guzzle\Http\Message\Response(201, NULL, $this->getFixtureContent('Api/Client/System/Storage/Fixture/Qvc_foreignId_12.xml')));
+		$restClient->addSubscriber($mock);
+
+		$this->documentBackend->injectRestClient($restClient);
+		$this->documentBackend->getAllByFilterCollection(0, 10, new FilterCollection(),'foo','DESC');
+	}
+
+	/**
+	 * @test
+	 * @expectedException \Searchperience\Common\Exception\InvalidArgumentException
+	 */
+	public function invalidSortingThrowsException() {
+		$this->documentBackend->getAllByFilterCollection(0, 10, new FilterCollection(),'foo','Foo');
+	}
+
+	/**
+	 * @test
+	 */
+	public function canGetClassNameForPromotionMimeType() {
+		$className = $this->documentBackend->getClassNameForMimeType('text/searchperiencepromotion+xml');
+		$this->assertEquals('\Searchperience\Api\Client\Domain\Document\Promotion',$className,'Retrieve unexpected classname for promotion');
+	}
+
+	/**
+	 * @test
+	 */
+	public function canGetDefaultClassName() {
+		$className = $this->documentBackend->getClassNameForMimeType('foobar');
+		$this->assertEquals('\Searchperience\Api\Client\Domain\Document\Document',$className,'Can not retrieve default classname');
+	}
+
+	/**
+	 * @test
+	 */
+	public function getByIdsReturnsNullForEmptyResponse() {
+		$restClient = $this->getMockedRestClientWith404Response();
+		$this->documentBackend->injectRestClient($restClient);
+		$document = $this->documentBackend->getById('32');
+		$this->assertNull($document,'Get by id did not return null for unexisting entity');
+	}
+
+	/**
+	 * @test
+	 */
+	public function getByForeignIdsReturnsNullForEmptyResponse() {
+		$restClient = $this->getMockedRestClientWith404Response();
+		$this->documentBackend->injectRestClient($restClient);
+		$document = $this->documentBackend->getByForeignId('32');
+		$this->assertNull($document,'Get by foreignId did not return null for unexisting entity');
+	}
+
+
+	/**
+	 * @test
+	 */
+	public function getByUrlReturnsNullForEmptyResponse() {
+		$restClient = $this->getMockedRestClientWith404Response();
+		$this->documentBackend->injectRestClient($restClient);
+		$document = $this->documentBackend->getByUrl('http://foo');
+		$this->assertNull($document,'Get by url did not return null for unexisting entity');
+	}
+
 }

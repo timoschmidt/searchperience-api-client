@@ -3,9 +3,12 @@
 namespace Searchperience\Api\Client\Domain\UrlQueueItem;
 
 use Symfony\Component\Validator\Validation;
+use Searchperience\Api\Client\System\Storage\AbstractRestBackend;
+use Searchperience\Common\Exception\InvalidArgumentException;
 
 /**
- * Class UrlqueueRepository
+ * Class UrlQueueItemRepository
+ *
  * @package Searchperience\Api\Client\Domain
  * @author: Nikolay Diaur <nikolay.diaur@aoe.com>
  */
@@ -66,7 +69,7 @@ class UrlQueueItemRepository {
 		$violations = $this->urlQueueValidator->validate($urlQueueItem);
 
 		if ($violations->count() > 0) {
-			throw new \Searchperience\Common\Exception\InvalidArgumentException('Given object of type "' . get_class($urlQueueItem) . '" is not valid: ' . PHP_EOL . $violations);
+			throw new InvalidArgumentException('Given object of type "' . get_class($urlQueueItem) . '" is not valid: ' . PHP_EOL . $violations);
 		}
 
 		$status = $this->storageBackend->post($urlQueueItem);
@@ -76,27 +79,34 @@ class UrlQueueItemRepository {
 	/**
 	 * Get url queue items by state
 	 *
-	 * @param array $states
 	 * @param int $start
 	 * @param int $limit
+	 * @param array $states
+	 * @param string $sortingField
+	 * @param string $sortingType
 	 * @return UrlQueueItemCollection
 	 * @throws \Searchperience\Common\Exception\InvalidArgumentException
 	 */
-	public function getAllByStates($states = array(), $start = 0, $limit = 10) {
+	public function getAllByStates($start = 0, $limit = 10, $states = array(), $sortingField = '', $sortingType = AbstractRestBackend::SORTING_DESC) {
 		$filterCollection = $this->filterCollectionFactory->createFromUrlQueueItemStates($states);
 
-
 		if (!is_array($states)) {
-			throw new \Searchperience\Common\Exception\InvalidArgumentException('Method "' . __METHOD__ . '" accepts only integer values as $state. Input was: ' . serialize($states));
+			throw new InvalidArgumentException('Method "' . __METHOD__ . '" accepts only integer values as $state. Input was: ' . serialize($states));
 		}
 		if (!is_integer($start)) {
-			throw new \Searchperience\Common\Exception\InvalidArgumentException('Method "' . __METHOD__ . '" accepts only integer values as $start. Input was: ' . serialize($start));
+			throw new InvalidArgumentException('Method "' . __METHOD__ . '" accepts only integer values as $start. Input was: ' . serialize($start));
 		}
 		if (!is_integer($limit)) {
-			throw new \Searchperience\Common\Exception\InvalidArgumentException('Method "' . __METHOD__ . '" accepts only integer values as $limit. Input was: ' . serialize($limit));
+			throw new InvalidArgumentException('Method "' . __METHOD__ . '" accepts only integer values as $limit. Input was: ' . serialize($limit));
+		}
+		if (!is_string($sortingField)) {
+			throw new InvalidArgumentException('Method "' . __METHOD__ . '" accepts only string values as $sortingField. Input was: ' . serialize($sortingField));
+		}
+		if (!is_string($sortingType)) {
+			throw new InvalidArgumentException('Method "' . __METHOD__ . '" accepts only string values as $sortingType. Input was: ' . serialize($sortingType));
 		}
 
-		return $this->getAllByFilters($start, $limit, $filterCollection);
+		return $this->getAllByFilterCollection($start, $limit, $filterCollection, $sortingField, $sortingType);
 	}
 
 	/**
@@ -108,10 +118,10 @@ class UrlQueueItemRepository {
 	 */
 	public function getByDocumentId($documentId) {
 		if (!is_numeric($documentId)) {
-			throw new \Searchperience\Common\Exception\InvalidArgumentException('Method "' . __METHOD__ . '" accepts only integer values as $documentId. Input was: ' . serialize($documentId));
+			throw new InvalidArgumentException('Method "' . __METHOD__ . '" accepts only integer values as $documentId. Input was: ' . serialize($documentId));
 		}
 
-		$urqueue = $this->decorateUrlQueueItem($this->storageBackend->getByDocumentId($documentId));
+		$urqueue = $this->checkTypeAndDecorate($this->storageBackend->getByDocumentId($documentId));
 		return $urqueue;
 	}
 
@@ -124,10 +134,10 @@ class UrlQueueItemRepository {
 	 */
 	public function getByUrl($url) {
 		if (!is_string($url)) {
-			throw new \Searchperience\Common\Exception\InvalidArgumentException('Method "' . __METHOD__ . '" accepts only strings values as $url. Input was: ' . serialize($url));
+			throw new InvalidArgumentException('Method "' . __METHOD__ . '" accepts only strings values as $url. Input was: ' . serialize($url));
 		}
 
-		$urqueue = $this->decorateUrlQueueItem($this->storageBackend->getByUrl($url));
+		$urqueue = $this->checkTypeAndDecorate($this->storageBackend->getByUrl($url));
 		return $urqueue;
 	}
 
@@ -137,23 +147,32 @@ class UrlQueueItemRepository {
 	 * @param int $start
 	 * @param int $limit
 	 * @param array $filterArguments
+	 * @param string $sortingField
+	 * @param string $sortingType
 	 *
 	 * @throws \Searchperience\Common\Exception\InvalidArgumentException
 	 * @return \Searchperience\Api\Client\Domain\Document\UrlQueueItemCollection
 	 */
-	public function getAllByFilters($start = 0, $limit = 10, array $filterArguments = array()) {
+	public function getAllByFilters($start = 0, $limit = 10, array $filterArguments = array(), $sortingField = '', $sortingType = AbstractRestBackend::SORTING_DESC) {
 		if (!is_integer($start)) {
-			throw new \Searchperience\Common\Exception\InvalidArgumentException('Method "' . __METHOD__ . '" accepts only integer values as $start. Input was: ' . serialize($start));
+			throw new InvalidArgumentException('Method "' . __METHOD__ . '" accepts only integer values as $start. Input was: ' . serialize($start));
 		}
 		if (!is_integer($limit)) {
-			throw new \Searchperience\Common\Exception\InvalidArgumentException('Method "' . __METHOD__ . '" accepts only integer values as $limit. Input was: ' . serialize($limit));
+			throw new InvalidArgumentException('Method "' . __METHOD__ . '" accepts only integer values as $limit. Input was: ' . serialize($limit));
 		}
 		if (!is_array($filterArguments)) {
-			throw new \Searchperience\Common\Exception\InvalidArgumentException('Method "' . __METHOD__ . '" accepts only integer values as $filterArguments. Input was: ' . serialize($filterArguments));
+			throw new InvalidArgumentException('Method "' . __METHOD__ . '" accepts only integer values as $filterArguments. Input was: ' . serialize($filterArguments));
+		}
+		if (!is_string($sortingField)) {
+			throw new InvalidArgumentException('Method "' . __METHOD__ . '" accepts only string values as $sortingField. Input was: ' . serialize($sortingField));
+		}
+		if (!is_string($sortingType)) {
+			throw new InvalidArgumentException('Method "' . __METHOD__ . '" accepts only string values as $sortingType. Input was: ' . serialize($sortingType));
 		}
 
+
 		$filterCollection = $this->filterCollectionFactory->createFromFilterArguments($filterArguments);
-		$urqueue = $this->getAllByFilterCollection($start, $limit, $filterCollection);
+		$urqueue = $this->getAllByFilterCollection($start, $limit, $filterCollection, $sortingField, $sortingType);
 
 		return $urqueue;
 	}
@@ -161,19 +180,28 @@ class UrlQueueItemRepository {
 	/**
 	 * @param int $start
 	 * @param int $limit
-	 * @param Filters\FilterCollection $filtersCollection
+	 * @param \Searchperience\Api\Client\Domain\Filters\FilterCollection $filtersCollection
+	 * @param string $sortingField
+	 * @param string $sortingType
+	 *
 	 * @return UrlQueueItemCollection
 	 * @throws \Searchperience\Common\Exception\InvalidArgumentException
 	 */
-	public function getAllByFilterCollection($start, $limit, \Searchperience\Api\Client\Domain\Filters\FilterCollection $filtersCollection = null) {
+	public function getAllByFilterCollection($start, $limit, \Searchperience\Api\Client\Domain\Filters\FilterCollection $filtersCollection = null, $sortingField = '', $sortingType = AbstractRestBackend::SORTING_DESC) {
 		if (!is_integer($start)) {
-			throw new \Searchperience\Common\Exception\InvalidArgumentException('Method "' . __METHOD__ . '" accepts only integer values as $start. Input was: ' . serialize($start));
+			throw new InvalidArgumentException('Method "' . __METHOD__ . '" accepts only integer values as $start. Input was: ' . serialize($start));
 		}
 		if (!is_integer($limit)) {
-			throw new \Searchperience\Common\Exception\InvalidArgumentException('Method "' . __METHOD__ . '" accepts only integer values as $limit. Input was: ' . serialize($limit));
+			throw new InvalidArgumentException('Method "' . __METHOD__ . '" accepts only integer values as $limit. Input was: ' . serialize($limit));
+		}
+		if (!is_string($sortingField)) {
+			throw new InvalidArgumentException('Method "' . __METHOD__ . '" accepts only string values as $sortingField. Input was: ' . serialize($sortingField));
+		}
+		if (!is_string($sortingType)) {
+			throw new InvalidArgumentException('Method "' . __METHOD__ . '" accepts only string values as $sortingType. Input was: ' . serialize($sortingType));
 		}
 
-		$urqueues = $this->storageBackend->getAllByFilterCollection($start, $limit, $filtersCollection);
+		$urqueues = $this->storageBackend->getAllByFilterCollection($start, $limit, $filtersCollection, $sortingField, $sortingType);
 		return $this->decorateUrlQueueItems($urqueues);
 	}
 
@@ -192,7 +220,7 @@ class UrlQueueItemRepository {
 	 */
 	public function deleteByDocumentId($documentId) {
 		if (!is_numeric($documentId) ) {
-			throw new \Searchperience\Common\Exception\InvalidArgumentException('Method "' . __METHOD__ . '" accepts only integers values as $id. Input was: ' . serialize($documentId));
+			throw new InvalidArgumentException('Method "' . __METHOD__ . '" accepts only integers values as $id. Input was: ' . serialize($documentId));
 		}
 
 		$statusCode = $this->storageBackend->deleteByDocumentId($documentId);
@@ -210,7 +238,7 @@ class UrlQueueItemRepository {
 	 */
 	public function deleteByUrl($url) {
 		if ( !is_string($url) ) {
-			throw new \Searchperience\Common\Exception\InvalidArgumentException('Method "' . __METHOD__ . '" accepts only strings values as $url. Input was: ' . serialize($url));
+			throw new InvalidArgumentException('Method "' . __METHOD__ . '" accepts only strings values as $url. Input was: ' . serialize($url));
 		}
 
 		$statusCode = $this->storageBackend->deleteByUrl($url);
@@ -225,9 +253,23 @@ class UrlQueueItemRepository {
 		$newCollection = new UrlQueueItemCollection();
 		$newCollection->setTotalCount($urqueues->getTotalCount());
 		foreach ($urqueues as $urqueue) {
-			$newCollection->append($this->decorateUrlQueueItem($urqueue));
+			$newCollection->append($this->checkTypeAndDecorate($urqueue));
 		}
 		return $newCollection;
+	}
+
+	/**
+	 * Checks the type and applies decorate when the subject is not null
+	 *
+	 * @param mixed $urlQueueItem
+	 * @return mixed
+	 */
+	protected function checkTypeAndDecorate($urlQueueItem) {
+		if($urlQueueItem !== null) {
+			return $this->decorateUrlQueueItem($urlQueueItem);
+		}
+
+		return $urlQueueItem;
 	}
 
 	/**

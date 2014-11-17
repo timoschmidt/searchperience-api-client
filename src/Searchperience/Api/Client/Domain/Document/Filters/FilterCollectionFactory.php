@@ -10,7 +10,6 @@ namespace Searchperience\Api\Client\Domain\Document\Filters;
 use Searchperience\Api\Client\Domain\Document\Filters;
 use Searchperience\Api\Client\Domain\Document\UrlQueueItem;
 use Searchperience\Api\Client\Domain\Filters\AbstractFilterCollectionFactory;
-use Searchperience\Api\Client\Domain\Filters\booleans;
 use Symfony\Component\Validator\Validation;
 
 /**
@@ -24,7 +23,7 @@ class FilterCollectionFactory extends AbstractFilterCollectionFactory {
 	 * @var array
 	 */
 	protected $allowedFilters = array(
-		'boostFactor','crawl','lastProcessed','notifications','pageRank','query','source'
+		'isDuplicate','isRedirect','isWaiting','isDeleted','hasError','boostFactor','crawl','lastProcessed','notifications','pageRank','query','source'
 	);
 
 	/**
@@ -40,7 +39,8 @@ class FilterCollectionFactory extends AbstractFilterCollectionFactory {
 	 * The implementation should check the passed filter arguments to allow only valid filters.
 	 *
 	 * @param $filters
-	 * @return booleans
+	 * @throws \Searchperience\Common\Exception\UnexpectedValueException
+	 * @return boolean
 	 */
 	protected function validateFilterArguments($filters) {
 		$filterNames = array_keys($filters);

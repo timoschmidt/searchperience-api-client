@@ -4,6 +4,8 @@ namespace Searchperience\Api\Client\System\Storage;
 
 use Guzzle\Http\Client;
 use Searchperience\Api\Client\Domain\Document\DocumentCollection;
+use Searchperience\Common\Exception\InvalidArgumentException;
+use Searchperience\Common\Http\Exception\EntityNotFoundException;
 
 /**
  * @author Michael Klapper <michael.klapper@aoemedia.de>
@@ -12,27 +14,46 @@ use Searchperience\Api\Client\Domain\Document\DocumentCollection;
  */
 class RestDocumentBackend extends \Searchperience\Api\Client\System\Storage\AbstractRestBackend implements \Searchperience\Api\Client\System\Storage\DocumentBackendInterface {
 
+	/**
+	 * @var string
+	 */
+	protected $endpoint = 'documents';
 
+	/**
+	 * @var string
+	 */
+	protected static $defaultClass = '\Searchperience\Api\Client\Domain\Document\Document';
+
+	/**
+	 * @var array
+	 */
+	protected static $classMap = array(
+		'\Searchperience\Api\Client\Domain\Document\Promotion' => array('text/searchperiencepromotion+xml'),
+		'\Searchperience\Api\Client\Domain\Document\Product' => array('application/searchperience+xml')
+	);
+
+	/**
+	 * Returns the name of the class that is able to handle the content of a
+	 * specific mimeType.
+	 *
+	 * @param string $mimeType
+	 * @return string
+	 */
+	public static function getClassNameForMimeType($mimeType) {
+		foreach(self::$classMap as $className => $classMapEntry) {
+			if(in_array($mimeType,$classMapEntry)) {
+				return $className;
+			}
+		}
+
+		return self::$defaultClass;
+	}
 
 	/**
 	 * {@inheritdoc}
 	 */
-	public function post(\Searchperience\Api\Client\Domain\Document\Document $document) {
-		try {
-			/** @var $response \Guzzle\http\Message\Response */
-			$response = $this->restClient->setBaseUrl($this->baseUrl)
-				->post('/{customerKey}/documents', NULL, $this->buildRequestArrayFromDocument($document))
-				->setAuth($this->username, $this->password)
-				->send();
-		} catch (\Guzzle\Http\Exception\ClientErrorResponseException $exception) {
-			$this->transformStatusCodeToClientErrorResponseException($exception);
-		} catch (\Guzzle\Http\Exception\ServerErrorResponseException $exception) {
-			$this->transformStatusCodeToServerErrorResponseException($exception);
-		} catch (\Exception $exception) {
-			throw new \Searchperience\Common\Exception\RuntimeException('Unknown error occurred; Please check parent exception for more details.', 1353579269, $exception);
-		}
-
-		return $response->getStatusCode();
+	public function post(\Searchperience\Api\Client\Domain\Document\AbstractDocument $document) {
+		return $this->getPostResponseFromEndpoint($document);
 	}
 
 	/**
@@ -40,20 +61,11 @@ class RestDocumentBackend extends \Searchperience\Api\Client\System\Storage\Abst
 	 */
 	public function getByForeignId($foreignId) {
 		try {
-			/** @var $response \Guzzle\http\Message\Response */
-			$response = $this->restClient->setBaseUrl($this->baseUrl)
-				->get('/{customerKey}/documents?foreignId=' . $foreignId)
-				->setAuth($this->username, $this->password)
-				->send();
-		} catch (\Guzzle\Http\Exception\ClientErrorResponseException $exception) {
-			$this->transformStatusCodeToClientErrorResponseException($exception);
-		} catch (\Guzzle\Http\Exception\ServerErrorResponseException $exception) {
-			$this->transformStatusCodeToServerErrorResponseException($exception);
-		} catch (\Exception $exception) {
-			throw new \Searchperience\Common\Exception\RuntimeException('Unknown error occurred; Please check parent exception for more details.', 1353579279, $exception);
+			$response = $this->getGetResponseFromEndpoint('?foreignId=' . $foreignId);
+			return $this->buildDocumentFromXml($response->xml());
+		} catch (EntityNotFoundException $e) {
+			return null;
 		}
-
-		return $this->buildDocumentFromXml($response->xml());
 	}
 
 	/**
@@ -61,74 +73,42 @@ class RestDocumentBackend extends \Searchperience\Api\Client\System\Storage\Abst
 	 */
 	public function getById($id) {
 		try {
-			/** @var $response \Guzzle\http\Message\Response */
-			$response = $this->restClient->setBaseUrl($this->baseUrl)
-					->get('/{customerKey}/documents/' . $id)
-					->setAuth($this->username, $this->password)
-					->send();
-		} catch (\Guzzle\Http\Exception\ClientErrorResponseException $exception) {
-			$this->transformStatusCodeToClientErrorResponseException($exception);
-		} catch (\Guzzle\Http\Exception\ServerErrorResponseException $exception) {
-			$this->transformStatusCodeToServerErrorResponseException($exception);
-		} catch (\Exception $exception) {
-			throw new \Searchperience\Common\Exception\RuntimeException('Unknown error occurred; Please check parent exception for more details.', 1353579279, $exception);
+			$response = $this->getGetResponseFromEndpoint('/'.$id);
+			return $this->buildDocumentFromXml($response->xml());
+		} catch (EntityNotFoundException $e) {
+			return null;
 		}
-
-		return $this->buildDocumentFromXml($response->xml());
 	}
-
 
 	/**
 	 * {@inheritdoc}
 	 */
 	public function getByUrl($url) {
 		try {
-			$url = urlencode($url);
-			/** @var $response \Guzzle\http\Message\Response */
-			$response = $this->restClient->setBaseUrl($this->baseUrl)
-					->get('/{customerKey}/documents?url=' . $url)
-					->setAuth($this->username, $this->password)
-					->send();
-		} catch (\Guzzle\Http\Exception\ClientErrorResponseException $exception) {
-			$this->transformStatusCodeToClientErrorResponseException($exception);
-		} catch (\Guzzle\Http\Exception\ServerErrorResponseException $exception) {
-			$this->transformStatusCodeToServerErrorResponseException($exception);
-		} catch (\Exception $exception) {
-			throw new \Searchperience\Common\Exception\RuntimeException('Unknown error occurred; Please check parent exception for more details.', 1353579279, $exception);
+			$response = $this->getGetResponseFromEndpoint('?url=' . $url);
+			return $this->buildDocumentFromXml($response->xml());
+		} catch (EntityNotFoundException $e) {
+			return null;
 		}
-
-		return $this->buildDocumentFromXml($response->xml());
 	}
 
 	/**
 	 * {@inheritdoc}
 	 * @param int $start
 	 * @param int $limit
+	 * @param string $sortingField = ''
+	 * @param string $sortingType = desc
 	 * @param \Searchperience\Api\Client\Domain\Filters\FilterCollection $filtersCollection
-	 * @return \Searchperience\Api\Client\Domain\Document\Document
+	 * @return \Searchperience\Api\Client\Domain\Document\DocumentCollection
 	 * @throws \Searchperience\Common\Exception\RuntimeException
 	 */
-	public function getAllByFilterCollection($start, $limit, \Searchperience\Api\Client\Domain\Filters\FilterCollection $filtersCollection = null) {
-		$filterUrlString = '';
-		if($filtersCollection != null) {
-			$filterUrlString = $filtersCollection->getFilterStringFromAll();
-		}
-
+	public function getAllByFilterCollection($start, $limit, \Searchperience\Api\Client\Domain\Filters\FilterCollection $filtersCollection = null, $sortingField = '', $sortingType = self::SORTING_DESC) {
 		try {
-			/** @var $response \Guzzle\http\Message\Response */
-			$response = $this->restClient->setBaseUrl($this->baseUrl)
-					->get('/{customerKey}/documents?start=' . $start . '&limit=' . $limit . $filterUrlString)
-					->setAuth($this->username, $this->password)
-					->send();
-		} catch (\Guzzle\Http\Exception\ClientErrorResponseException $exception) {
-			$this->transformStatusCodeToClientErrorResponseException($exception);
-		} catch (\Guzzle\Http\Exception\ServerErrorResponseException $exception) {
-			$this->transformStatusCodeToServerErrorResponseException($exception);
-		} catch (\Exception $exception) {
-			throw new \Searchperience\Common\Exception\RuntimeException('Unknown error occurred; Please check parent exception for more details.', 1353579279, $exception);
+			$response   = $this->getListResponseFromEndpoint($start, $limit, $filtersCollection, $sortingField, $sortingType);
+			$xmlElement = $response->xml();
+		} catch (EntityNotFoundException $e) {
+			return new DocumentCollection();
 		}
-
-		$xmlElement = $response->xml();
 
 		return $this->buildDocumentsFromXml($xmlElement);
 	}
@@ -137,20 +117,15 @@ class RestDocumentBackend extends \Searchperience\Api\Client\System\Storage\Abst
 	 * {@inheritdoc}
 	 */
 	public function deleteByForeignId($foreignId) {
-		try {
-			/** @var $response \Guzzle\http\Message\Response */
-			$response = $this->restClient->setBaseUrl($this->baseUrl)
-				->delete('/{customerKey}/documents?foreignId=' . $foreignId)
-				->setAuth($this->username, $this->password)
-				->send();
-		} catch (\Guzzle\Http\Exception\ClientErrorResponseException $exception) {
-			$this->transformStatusCodeToClientErrorResponseException($exception);
-		} catch (\Guzzle\Http\Exception\ServerErrorResponseException $exception) {
-			$this->transformStatusCodeToServerErrorResponseException($exception);
-		} catch (\Exception $exception) {
-			throw new \Searchperience\Common\Exception\RuntimeException('Unknown error occurred; Please check parent exception for more details.', 1353579284, $exception);
-		}
+		$response = $this->getDeleteResponseFromEndpoint('?foreignId=' . $foreignId);
+		return $response->getStatusCode();
+	}
 
+	/**
+	 * {@inheritdoc}
+	 */
+	public function deleteByUrl($url) {
+		$response = $this->getDeleteResponseFromEndpoint('?url=' . urlencode($url));
 		return $response->getStatusCode();
 	}
 
@@ -158,20 +133,7 @@ class RestDocumentBackend extends \Searchperience\Api\Client\System\Storage\Abst
 	 * {@inheritdoc}
 	 */
 	public function deleteById($id) {
-		try {
-			/** @var $response \Guzzle\http\Message\Response */
-			$response = $this->restClient->setBaseUrl($this->baseUrl)
-					->delete('/{customerKey}/documents/' . $id)
-					->setAuth($this->username, $this->password)
-					->send();
-		} catch (\Guzzle\Http\Exception\ClientErrorResponseException $exception) {
-			$this->transformStatusCodeToClientErrorResponseException($exception);
-		} catch (\Guzzle\Http\Exception\ServerErrorResponseException $exception) {
-			$this->transformStatusCodeToServerErrorResponseException($exception);
-		} catch (\Exception $exception) {
-			throw new \Searchperience\Common\Exception\RuntimeException('Unknown error occurred; Please check parent exception for more details.', 1353579284, $exception);
-		}
-
+		$response = $this->getDeleteResponseFromEndpoint('/' . $id);
 		return $response->getStatusCode();
 	}
 
@@ -179,27 +141,14 @@ class RestDocumentBackend extends \Searchperience\Api\Client\System\Storage\Abst
 	 * {@inheritdoc}
 	 */
 	public function deleteBySource($source) {
-		try {
-			/** @var $response \Guzzle\http\Message\Response */
-			$response = $this->restClient->setBaseUrl($this->baseUrl)
-					->delete('/{customerKey}/documents?source=' . $source)
-					->setAuth($this->username, $this->password)
-					->send();
-		} catch (\Guzzle\Http\Exception\ClientErrorResponseException $exception) {
-			$this->transformStatusCodeToClientErrorResponseException($exception);
-		} catch (\Guzzle\Http\Exception\ServerErrorResponseException $exception) {
-			$this->transformStatusCodeToServerErrorResponseException($exception);
-		} catch (\Exception $exception) {
-			throw new \Searchperience\Common\Exception\RuntimeException('Unknown error occurred; Please check parent exception for more details.', 1386845400, $exception);
-		}
-
+		$response = $this->getDeleteResponseFromEndpoint('?source=' . $source);
 		return $response->getStatusCode();
 	}
 
 	/**
 	 * @param \SimpleXMLElement $xml
 	 *
-	 * @return \Searchperience\Api\Client\Domain\Document\Document
+	 * @return \Searchperience\Api\Client\Domain\Document\AbstractDocument
 	 */
 	protected function buildDocumentFromXml(\SimpleXMLElement $xml) {
 		$documents = $this->buildDocumentsFromXml($xml);
@@ -209,7 +158,7 @@ class RestDocumentBackend extends \Searchperience\Api\Client\System\Storage\Abst
 	/**
 	 * @param \SimpleXMLElement $xml
 	 *
-	 * @return \Searchperience\Api\Client\Domain\Document\Document[]
+	 * @return \Searchperience\Api\Client\Domain\Document\DocumentCollection
 	 */
 	protected function buildDocumentsFromXml(\SimpleXMLElement $xml) {
 		$documentArray = new DocumentCollection();
@@ -219,41 +168,47 @@ class RestDocumentBackend extends \Searchperience\Api\Client\System\Storage\Abst
 		$documents=$xml->xpath('document');
 		foreach($documents as $document) {
 			$documentAttributeArray = (array)$document->attributes();
-			$documentObject = new \Searchperience\Api\Client\Domain\Document\Document();
-			$documentObject ->setId((integer)$documentAttributeArray['@attributes']['id']);
-			$documentObject ->setUrl((string)$document->url);
-			$documentObject ->setForeignId((string)$document->foreignId);
-			$documentObject ->setSource((string)$document->source);
-			$documentObject ->setBoostFactor((integer)$document->boostFactor);
-			$documentObject ->setContent((string)$document->content);
-			$documentObject ->setGeneralPriority((integer)$document->generalPriority);
-			$documentObject ->setTemporaryPriority((integer)$document->temporaryPriority);
-			$documentObject ->setMimeType((string)$document->mimeType);
-			$documentObject ->setIsMarkedForProcessing((integer)$document->isMarkedForProcessing);
-			$documentObject ->setIsMarkedForDeletion((integer)$document->isMarkedForDeletion);
-			$documentObject ->setIsProminent((integer)$document->isProminent);
-			$documentObject	->setIsRedirectTo((integer)$document->isRedirectTo);
-			$documentObject	->setIsDuplicateOf((integer)$document->isDuplicateOf);
-			$documentObject ->setErrorCount((integer)$document->errorCount);
-			$documentObject ->setLastErrorMessage((string)$document->lastErrorMessage);
-			$documentObject ->setRecrawlTimeSpan((string)$document->recrawlTimeSpan);
-			$documentObject ->setInternalNoIndex((string)$document->internalNoIndex);
 
+			$mimeType       = (string)$document->mimeType;
+			$className      = $this->getClassNameForMimeType($mimeType);
+			$documentObject = new $className();
+			$documentObject ->__setProperty('id',(integer)$documentAttributeArray['@attributes']['id']);
+			$documentObject ->__setProperty('url',(string)$document->url);
+			$documentObject ->__setProperty('foreignId',(string)$document->foreignId);
+			$documentObject ->__setProperty('source',(string)$document->source);
+			$documentObject ->__setProperty('boostFactor',(integer)$document->boostFactor);
+			$documentObject ->__setProperty('content',(string)$document->content);
+			$documentObject ->__setProperty('generalPriority',(integer)$document->generalPriority);
+			$documentObject ->__setProperty('temporaryPriority',(integer)$document->temporaryPriority);
+			$documentObject ->__setProperty('mimeType',(string)$document->mimeType);
+			$documentObject ->__setProperty('isMarkedForProcessing',(integer)$document->isMarkedForProcessing);
+			$documentObject ->__setProperty('isMarkedForDeletion',(integer)$document->isMarkedForDeletion);
+			$documentObject ->__setProperty('isProminent',(integer)$document->isProminent);
+			$documentObject	->__setProperty('isRedirectTo',(integer)$document->isRedirectTo);
+			$documentObject	->__setProperty('isDuplicateOf',(integer)$document->isDuplicateOf);
+			$documentObject ->__setProperty('errorCount',(integer)$document->errorCount);
+			$documentObject ->__setProperty('lastErrorMessage',(string)$document->lastErrorMessage);
+			$documentObject ->__setProperty('recrawlTimeSpan',(string)$document->recrawlTimeSpan);
+			$documentObject ->__setProperty('internalNoIndex',(string)$document->internalNoIndex);
+			$documentObject ->__setProperty('pageRank',(float)$document->pageRank);
+			$documentObject ->__setProperty('solrCoreHints',(string)$document->solrCoreHints);
 
 			if(trim($document->lastProcessingTime) != '') {
 				//we assume that the restapi allways return y-m-d H:i:s in the utc format
 				$lastProcessingDate = $this->dateTimeService->getDateTimeFromApiDateString($document->lastProcessingTime);
-				$documentObject ->setLastProcessingDate($lastProcessingDate);
+				$documentObject ->__setProperty('lastProcessingDate',$lastProcessingDate);
 			}
 
 			if(trim($document->lastCrawlingTime) != '') {
 				//we assume that the restapi allways return y-m-d H:i:s in the utc format
 				$lastCrawlingDateTime = $this->dateTimeService->getDateTimeFromApiDateString($document->lastCrawlingTime);
-				$documentObject ->setLastCrawlingDateTime($lastCrawlingDateTime);
+				$documentObject ->__setProperty('lastCrawlingDateTime',$lastCrawlingDateTime);
 			}
 
-			$documentObject ->setNoIndex((integer)$document->noIndex);
+			$documentObject ->__setProperty('noIndex',(integer)$document->noIndex);
 			$documentArray[]=$documentObject;
+
+			$documentObject->afterReconstitution();
 		}
 
 		return $documentArray ;
@@ -265,7 +220,7 @@ class RestDocumentBackend extends \Searchperience\Api\Client\System\Storage\Abst
 	 * @param \Searchperience\Api\Client\Domain\Document\Document $document
 	 * @return array
 	 */
-	protected function buildRequestArrayFromDocument(\Searchperience\Api\Client\Domain\Document\Document $document) {
+	protected function buildRequestArray(\Searchperience\Api\Client\Domain\AbstractEntity $document) {
 		$valueArray = array();
 
 		if ($document->getLastProcessingDate() instanceof \DateTime) {
@@ -307,8 +262,13 @@ class RestDocumentBackend extends \Searchperience\Api\Client\System\Storage\Abst
 		if (!is_null($document->getTemporaryPriority())) {
 			$valueArray['temporaryPriority'] = $document->getTemporaryPriority();
 		}
+		if (!is_null($document->getPageRank())) {
+			$valueArray['pageRank'] = $document->getPageRank();
+		}
+		if (!is_null($document->getSolrCoreHints())) {
+			$valueArray['solrCoreHints'] = $document->getSolrCoreHints();
+		}
 
 		return $valueArray;
 	}
-
 }

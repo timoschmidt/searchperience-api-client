@@ -3,13 +3,14 @@
 namespace Searchperience\Api\Client\Domain\UrlQueueItem;
 
 use Symfony\Component\Validator\Constraints as Assert;
+use Searchperience\Api\Client\Domain\AbstractEntity;
 
 /**
  * Class Urlqueue
  * @package Searchperience\Api\Client\Domain
  * @author: Nikolay Diaur <nikolay.diaur@aoe.com>
  */
-class UrlQueueItem {
+class UrlQueueItem extends AbstractEntity {
 
 	/**
 	 * Indicates that document for this url was deleted.
@@ -39,6 +40,16 @@ class UrlQueueItem {
 	 * @var string
 	 */
 	const IS_PROCESSING = 'IS_PROCESSING';
+
+	/**
+	 * @var array
+	 */
+	protected static $validNotifications = array(
+		self::IS_DOCUMENT_DELETED,
+		self::IS_WAITING,
+		self::IS_ERROR,
+		self::IS_PROCESSING
+	);
 
 	/**
 	 * @var integer
@@ -82,6 +93,13 @@ class UrlQueueItem {
 	 * @var integer
 	 */
 	protected $priority = null;
+
+	/**
+	 * @return array
+	 */
+	public static function getValidNotifications() {
+		return self::$validNotifications;
+	}
 
 	/**
 	 * @param boolean $deleted

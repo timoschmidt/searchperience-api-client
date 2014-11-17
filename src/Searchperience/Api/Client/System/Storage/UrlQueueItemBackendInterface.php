@@ -7,25 +7,7 @@ namespace Searchperience\Api\Client\System\Storage;
  * @package Searchperience\Api\Client\System\Storage
  * @author: Nikolay Diaur <nikolay.diaur@aoe.com>
  */
-interface UrlQueueItemBackendInterface {
-
-	/**
-	 * @param string $username
-	 * @return void
-	 */
-	public function setUsername($username);
-
-	/**
-	 * @param string $password
-	 * @return void
-	 */
-	public function setPassword($password);
-
-	/**
-	 * @param string $baseUrl http://api.searchperience.me/
-	 * @return mixed
-	 */
-	public function setBaseUrl($baseUrl);
+interface UrlQueueItemBackendInterface extends BackendInterface {
 
 	/**
 	 * @param \Searchperience\Api\Client\Domain\UrlQueueItem\UrlQueueItem $document
@@ -65,18 +47,6 @@ interface UrlQueueItemBackendInterface {
 	 * @return \Searchperience\Api\Client\Domain\Document\UrlQueueItem
 	 */
 	public function getByUrl($url);
-
-	/**
-     * @param integer $documentId
-	 * @throws \Searchperience\Common\Http\Exception\InternalServerErrorException
-	 * @throws \Searchperience\Common\Http\Exception\ForbiddenException
-	 * @throws \Searchperience\Common\Http\Exception\ClientErrorResponseException
-	 * @throws \Searchperience\Common\Http\Exception\UnauthorizedException
-	 * @throws \Searchperience\Common\Http\Exception\MethodNotAllowedException
-	 * @throws \Searchperience\Common\Http\Exception\RequestEntityTooLargeException
-	 * @return mixed
-	 */
-	public function updateByDocumentId($documentId);
 
 	/**
 	 * @param int $start

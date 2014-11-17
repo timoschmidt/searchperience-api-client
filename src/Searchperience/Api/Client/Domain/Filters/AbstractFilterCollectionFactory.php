@@ -63,12 +63,12 @@ abstract class AbstractFilterCollectionFactory {
 			throw new \Searchperience\Common\Exception\UnexpectedValueException($filterClassName.' values "' . __METHOD__ . '" should be an array: ' . $filterValue);
 		} else {
 			foreach ($filterValue as $key => $value) {
-				if ( is_object($value) || trim($value) != '') {
+				if ( is_object($value) || is_array($value) || trim($value) != '') {
 					if (method_exists($filter, $method = ('set' . ucfirst($key)))) {
 						$filter->$method($value);
 						$this->validateFilter($filter);
 					} else {
-						throw new \Searchperience\Common\Exception\InvalidArgumentException('Invalid '. $filterClassName.' value ' . $key);
+						throw new \Searchperience\Common\Exception\InvalidArgumentException('Invalid '. $filterClassName.' value ' . $key . 'value' . serialize($value));
 					}
 				}
 			}
@@ -97,7 +97,6 @@ abstract class AbstractFilterCollectionFactory {
 				throw new \Searchperience\Common\Exception\UnexpectedValueException('Filter not exists: ' . $filterName);
 			}
 		}
-
 		return $result;
 	}
 

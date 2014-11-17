@@ -7,7 +7,7 @@ use Searchperience\Api\Client\Domain\UrlQueueItem\UrlQueueItem;
  * @author Timo Schmidt <timo.schmidt@aoe.com>
  * @author Nikolay Diaur <nikolay.diaur@aoe.com>
  */
-class RestUrlqueueBackendTestCase extends \Searchperience\Tests\BaseTestCase {
+class RestUrlQueueItemBackendTestCase extends \Searchperience\Tests\BaseTestCase {
 
 	/**
 	 * @var \Searchperience\Api\Client\System\Storage\RestUrlQueueItemBackend
@@ -81,11 +81,7 @@ class RestUrlqueueBackendTestCase extends \Searchperience\Tests\BaseTestCase {
 		$expectsArgumentsArray = Array(
 				'deleted' => 0,
 				'documentId' => '111',
-				'failCount' => 1,
-				'lastError' => 'last error',
 				'priority' => 3,
-				'processingStartTime' => '2012-11-15 00:05:07',
-				'processingThreadId' => 1,
 				'url' => 'http://aoe.com'
 		);
 		$this->urlQueueItemBackend->expects($this->once())->method('executePostRequest')->with($expectsArgumentsArray)->will(
@@ -119,7 +115,7 @@ class RestUrlqueueBackendTestCase extends \Searchperience\Tests\BaseTestCase {
 	 * @test
 	 */
 	public function canDeleteUrlQueueItemByDocumentId() {
-		$expectedUrl =  '/{customerKey}/urlqueueitems?documentId=4711';
+		$expectedUrl =  '/{customerKey}/urlqueueitems/4711';
 		$responseMock = $this->getMock('\Guzzle\Http\Message\Response', array('getStatusCode'), array(), '', false);
 		$responseMock->expects($this->once())->method('getStatusCode')->will($this->returnValue(200));
 
@@ -165,4 +161,24 @@ class RestUrlqueueBackendTestCase extends \Searchperience\Tests\BaseTestCase {
 		$this->assertEquals(200, $this->urlQueueItemBackend->deleteByUrl('http://www.google.de/'));
 	}
 
+
+	/**
+	 * @test
+	 */
+	public function getByUrlReturnsNullForEmptyResponse() {
+		$restClient = $this->getMockedRestClientWith404Response();
+		$this->urlQueueItemBackend->injectRestClient($restClient);
+		$urlQueueItem = $this->urlQueueItemBackend->getByUrl('http://foo');
+		$this->assertNull($urlQueueItem,'Get by url did not return null for unexisting entity');
+	}
+
+	/**
+	 * @test
+	 */
+	public function getByDocumentIdNothingForEmptyResponse() {
+		$restClient = $this->getMockedRestClientWith404Response();
+		$this->urlQueueItemBackend->injectRestClient($restClient);
+		$urlQueueItem = $this->urlQueueItemBackend->getByDocumentId(1234);
+		$this->assertNull($urlQueueItem,'Get by documentId did not return null for unexisting entity');
+	}
 }
